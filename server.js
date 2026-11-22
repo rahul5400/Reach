@@ -2,6 +2,7 @@ const express = require("express");
 const { exec } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const net = require("net");
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -73,17 +74,36 @@ app.get("/", (_req, res) => {
   res.type("html").send(page(null, null));
 });
 
-app.post("/", (req, res) => {
+// app.post("/", (req, res) => {
+//   const host = String(req.body.host || "").trim();
+//   if (!host) {
+//     return res.status(400).type("html").send(page("Host is required.", null));
+//   }
+//   exec(`ping -c 1 -W 2 ${host}`, { timeout: 4000 }, (err, stdout, stderr) => {
+//     const detail = (stdout || "Website may not exist").slice(0, 800);
+//     const status = err ? "down" : "up";
+//     res.type("html").send(page(null, { host, status, detail }));
+//   });
+// });
+
+app.post("/", async (req,res) => {
   const host = String(req.body.host || "").trim();
-  if (!host) {
-    return res.status(400).type("html").send(page("Host is required.", null));
-  }
-  exec(`ping -c 1 -W 2 ${host}`, { timeout: 4000 }, (err, stdout, stderr) => {
-    const detail = (stdout || stderr || (err && err.message) || "no reply").slice(0, 800);
-    const status = err ? "down" : "up";
-    res.type("html").send(page(null, { host, status, detail }));
+  const status = await new Promise((resolve) => {
+    const socket = net.connect({host: host, port: 443});
+    socket.setTimeout(5000);
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once("error", () => resolve(false));
   });
-});
+  const detail = status ? "Club Host is Up" : "Club Host is Down";
+  res.type("html").send(page(null, { host, status, detail }));
+})
 
 const port = Number(process.env.PORT || 3000);
 app.listen(port, "0.0.0.0", () => {
